@@ -3,6 +3,7 @@ const router = express.Router();
 const { pool } = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 const { pushPassUpdate } = require('../services/apnService');
+const { updateWalletObject } = require('../services/googleWalletService');
 
 // ══════════════════════════════════════════════════════════
 //  POST /api/scans
@@ -124,6 +125,11 @@ router.post('/', authMiddleware, async (req, res, next) => {
     // ── 4. Push APNs → Wallet mis à jour sur l'iPhone ─────
     if (holder.apn_push_token) {
       pushPassUpdate(holder.apn_push_token).catch(console.error);
+    }
+
+    // ── 5. Mettre à jour Google Wallet ────────────────────
+    if (process.env.GOOGLE_ISSUER_ID && process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+      updateWalletObject(holder, { ...holder, points: finalPoints ?? 0, stamps: finalStamps ?? 0 }).catch(console.error);
     }
 
     res.json({ success: true, ...responsePayload });

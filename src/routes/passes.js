@@ -5,10 +5,9 @@ const QRCode = require('qrcode');
 const { pool } = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 const { generatePass } = require('../services/passService');
+const { generateAddToWalletLink, createOrUpdateClass } = require('../services/googleWalletService');
 
 // ─── POST /api/passes/create ──────────────────────────────
-// Créer un nouveau client + générer son .pkpass
-// Appelé quand le restaurateur enregistre un nouveau client
 router.post('/create', authMiddleware, async (req, res, next) => {
   try {
     const { card_id, name, phone, email } = req.body;
@@ -18,7 +17,6 @@ router.post('/create', authMiddleware, async (req, res, next) => {
       return res.status(400).json({ error: 'card_id requis' });
     }
 
-    // Vérifier que la carte appartient bien à ce restaurant
     const cardResult = await pool.query(
       'SELECT * FROM loyalty_cards WHERE id = $1 AND restaurant_id = $2 AND is_active = TRUE',
       [card_id, restaurantId]
@@ -30,7 +28,7 @@ router.post('/create', authMiddleware, async (req, res, next) => {
 
     const card = cardResult.rows[0];
 
-    // Vérifier la limite du plan gratuit (50 clients max)
+    // Vérifier limite plan gratuit
     const restaurant = await pool.query(
       'SELECT plan FROM restaurants WHERE id = $1', [restaurantId]
     );
@@ -46,10 +44,10 @@ router.post('/create', authMiddleware, async (req, res, next) => {
       }
     }
 
-    // Générer un serial_number unique
+    // Générer serial number unique
     const serialNumber = `${card.serial_number_prefix}-${uuidv4().split('-')[0].toUpperCase()}`;
 
-    // Créer le client dans la BDD
+    // Créer le client en BDD
     const holderResult = await pool.query(
       `INSERT INTO card_holders (card_id, restaurant_id, name, phone, email, serial_number)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -59,37 +57,49 @@ router.post('/create', authMiddleware, async (req, res, next) => {
 
     const holder = holderResult.rows[0];
 
-    // Générer le .pkpass (nécessite les certificats Apple)
+    // ── Générer QR code image ──────────────────────────────
+    const qrDataUrl = await QRCode.toDataURL(serialNumber);
+
+    // ── Lien "Ajouter à Google Wallet" ────────────────────
+    let googleWalletUrl = null;
+    if (process.env.GOOGLE_ISSUER_ID && process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+      try {
+        await createOrUpdateClass(card);
+        googleWalletUrl = await generateAddToWalletLink(card, holder);
+      } catch (gErr) {
+        console.error('Google Wallet error (non-blocking):', gErr.message);
+      }
+    }
+
+    // ── Essayer de générer un .pkpass Apple ───────────────
     try {
       const passBuffer = await generatePass(card, holder);
-
-      // Retourner le fichier .pkpass directement
       res.set({
         'Content-Type': 'application/vnd.apple.pkpass',
         'Content-Disposition': `attachment; filename="loyalwallet-${serialNumber}.pkpass"`,
+        'X-Google-Wallet-Url': googleWalletUrl || '',
       });
       return res.send(passBuffer);
-
     } catch (certError) {
-      // En dev sans certificats : retourner les infos du client + QR code
-      console.warn('⚠️  Certificats manquants, mode dev activé:', certError.message);
-
-      const qrDataUrl = await QRCode.toDataURL(serialNumber);
-
+      // Mode dev sans certificats Apple
       return res.status(201).json({
         dev_mode: true,
-        message: 'Certificats Apple manquants — voici les données du pass pour test',
+        message: 'Carte créée avec succès',
         holder: {
           id: holder.id,
           serial_number: holder.serial_number,
           points: holder.points,
+          stamps: holder.stamps,
         },
         card: {
           name: card.card_name,
+          loyalty_type: card.loyalty_type,
           reward: card.reward_description,
+          stamp_total: card.stamp_total,
           points_for_reward: card.points_for_reward,
         },
-        qr_code: qrDataUrl, // Image QR en base64 pour tester le scan
+        qr_code: qrDataUrl,
+        google_wallet_url: googleWalletUrl,
       });
     }
 
@@ -105,7 +115,9 @@ router.get('/:serialNumber', async (req, res, next) => {
     const { serialNumber } = req.params;
 
     const result = await pool.query(
-      `SELECT ch.*, lc.*
+      `SELECT ch.*, lc.card_name, lc.background_color, lc.foreground_color,
+              lc.label_color, lc.reward_description, lc.points_for_reward,
+              lc.loyalty_type, lc.stamp_total
        FROM card_holders ch
        JOIN loyalty_cards lc ON ch.card_id = lc.id
        WHERE ch.serial_number = $1`,
@@ -117,16 +129,42 @@ router.get('/:serialNumber', async (req, res, next) => {
     }
 
     const row = result.rows[0];
-    const card   = { card_name: row.card_name, background_color: row.background_color, foreground_color: row.foreground_color, label_color: row.label_color, reward_description: row.reward_description, points_for_reward: row.points_for_reward };
-    const holder = { id: row.id, serial_number: row.serial_number, points: row.points, total_visits: row.total_visits };
+    const card = {
+      card_name: row.card_name, background_color: row.background_color,
+      foreground_color: row.foreground_color, label_color: row.label_color,
+      reward_description: row.reward_description, points_for_reward: row.points_for_reward,
+      loyalty_type: row.loyalty_type, stamp_total: row.stamp_total,
+    };
+    const holder = {
+      id: row.id, serial_number: row.serial_number,
+      points: row.points, stamps: row.stamps, total_visits: row.total_visits,
+      name: row.name,
+    };
 
-    const passBuffer = await generatePass(card, holder);
+    // Essayer Apple Wallet
+    try {
+      const passBuffer = await generatePass(card, holder);
+      res.set({
+        'Content-Type': 'application/vnd.apple.pkpass',
+        'Content-Disposition': 'attachment; filename="loyalwallet.pkpass"',
+      });
+      return res.send(passBuffer);
+    } catch {
+      // Fallback : page HTML avec QR + bouton Google Wallet
+      const qrDataUrl = await QRCode.toDataURL(serialNumber);
+      let googleWalletUrl = null;
+      if (process.env.GOOGLE_ISSUER_ID && process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+        try { googleWalletUrl = await generateAddToWalletLink(card, holder); } catch {}
+      }
 
-    res.set({
-      'Content-Type': 'application/vnd.apple.pkpass',
-      'Content-Disposition': `attachment; filename="loyalwallet.pkpass"`,
-    });
-    res.send(passBuffer);
+      return res.json({
+        serial_number: serialNumber,
+        qr_code: qrDataUrl,
+        google_wallet_url: googleWalletUrl,
+        holder: { name: holder.name, points: holder.points, stamps: holder.stamps },
+        card: { name: card.card_name, reward: card.reward_description },
+      });
+    }
 
   } catch (err) {
     next(err);
