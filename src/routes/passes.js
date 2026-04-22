@@ -62,13 +62,20 @@ router.post('/create', authMiddleware, async (req, res, next) => {
 
     // ── Lien "Ajouter à Google Wallet" ────────────────────
     let googleWalletUrl = null;
+    console.log('GOOGLE_ISSUER_ID:', process.env.GOOGLE_ISSUER_ID);
+    console.log('GOOGLE_SERVICE_ACCOUNT_JSON exists:', !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+
     if (process.env.GOOGLE_ISSUER_ID && process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
       try {
         await createOrUpdateClass(card);
         googleWalletUrl = await generateAddToWalletLink(card, holder);
+        console.log('✅ Google Wallet URL generated:', googleWalletUrl ? 'YES' : 'NO');
       } catch (gErr) {
-        console.error('Google Wallet error (non-blocking):', gErr.message);
+        console.error('Google Wallet error:', gErr.message);
+        console.error('Google Wallet details:', JSON.stringify(gErr.response?.data));
       }
+    } else {
+      console.log('❌ Google env vars missing');
     }
 
     // ── Essayer de générer un .pkpass Apple ───────────────
