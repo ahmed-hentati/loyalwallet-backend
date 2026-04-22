@@ -217,9 +217,43 @@ async function updateWalletObject(card, holder) {
   }
 }
 
+// ── Envoyer un message de campagne sur la carte Wallet ────
+// Le message apparaît dans la section "Messages" de la carte Google Wallet
+async function sendCampaignMessage(holder, messageText) {
+  try {
+    const auth     = getAuth();
+    const client   = await auth.getClient();
+    const objectId = `${ISSUER_ID}.${holder.serial_number}`;
+
+    // Ajouter un message à l'objet Wallet existant
+    await client.request({
+      url: `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`,
+      method: 'PATCH',
+      data: {
+        messages: [
+          {
+            header: holder.card_name || 'Message de votre restaurant',
+            body: messageText,
+            id: `msg_${Date.now()}`,
+            messageType: 'TEXT',
+          },
+        ],
+      },
+    });
+
+    console.log(`✅ Campaign message sent to: ${holder.serial_number}`);
+  } catch (err) {
+    // Ne pas bloquer si l'objet n'existe pas encore sur Google Wallet
+    if (err.response?.status !== 404) {
+      throw err;
+    }
+  }
+}
+
 module.exports = {
   createOrUpdateClass,
   createOrUpdateObject,
   generateAddToWalletLink,
   updateWalletObject,
+  sendCampaignMessage,
 };

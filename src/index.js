@@ -9,19 +9,13 @@ const cardRoutes = require('./routes/cards');
 const clientRoutes = require('./routes/clients');
 const scanRoutes = require('./routes/scans');
 const passRoutes = require('./routes/passes');
+const campaignRoutes = require('./routes/campaigns');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ─── Middleware ───────────────────────────────────────────
-app.use(cors({
-  origin: [
-    'http://localhost:4200',
-    'https://loyalwallet-dashboard.vercel.app',
-    /\.vercel\.app$/
-  ],
-  credentials: true,
-}));
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -32,6 +26,7 @@ app.use('/api/cards',       cardRoutes);
 app.use('/api/clients',     clientRoutes);
 app.use('/api/scans',       scanRoutes);
 app.use('/api/passes',      passRoutes);
+app.use('/api/campaigns',   campaignRoutes);
 
 // Route Apple Wallet (WebService — requise par Apple)
 app.use('/wallet', require('./routes/wallet'));
