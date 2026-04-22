@@ -10,6 +10,7 @@ const clientRoutes = require('./routes/clients');
 const scanRoutes = require('./routes/scans');
 const passRoutes = require('./routes/passes');
 const campaignRoutes = require('./routes/campaigns');
+const publicRoutes = require('./routes/public');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,6 +28,7 @@ app.use('/api/clients',     clientRoutes);
 app.use('/api/scans',       scanRoutes);
 app.use('/api/passes',      passRoutes);
 app.use('/api/campaigns',   campaignRoutes);
+app.use('/api/public',      publicRoutes);
 
 // Route Apple Wallet (WebService — requise par Apple)
 app.use('/wallet', require('./routes/wallet'));
