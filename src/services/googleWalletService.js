@@ -10,7 +10,10 @@ function getAuth() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
   return new GoogleAuth({
     credentials,
-    scopes: ['https://www.googleapis.com/auth/wallet_object.issuer'],
+    scopes: [
+      'https://www.googleapis.com/auth/wallet_object.issuer',
+      'https://www.googleapis.com/auth/cloud-platform',
+    ],
   });
 }
 
@@ -18,7 +21,9 @@ function getAuth() {
 async function createOrUpdateClass(card) {
   const auth    = getAuth();
   const client  = await auth.getClient();
-  const classId = `${ISSUER_ID}.${CLASS_SUFFIX}_${card.id}`;
+  // Supprimer les tirets de l'UUID — Google Wallet n'accepte que [a-zA-Z0-9_.]
+  const safeCardId = card.id.replace(/-/g, '_');
+  const classId = `${ISSUER_ID}.${CLASS_SUFFIX}_${safeCardId}`;
 
   const loyaltyClass = {
     id: classId,
@@ -69,8 +74,10 @@ async function createOrUpdateClass(card) {
 async function createOrUpdateObject(card, holder) {
   const auth     = getAuth();
   const client   = await auth.getClient();
-  const classId  = `${ISSUER_ID}.${CLASS_SUFFIX}_${card.id}`;
-  const objectId = `${ISSUER_ID}.${holder.serial_number}`;
+  const safeCardId = card.id.replace(/-/g, '_');
+  const classId  = `${ISSUER_ID}.${CLASS_SUFFIX}_${safeCardId}`;
+  const safeSerial = holder.serial_number.replace(/-/g, '_');
+  const objectId = `${ISSUER_ID}.${safeSerial}`;
 
   const progressLabel = card.loyalty_type === 'stamp'
     ? `${holder.stamps} / ${card.stamp_total} tampons`
@@ -140,8 +147,10 @@ async function createOrUpdateObject(card, holder) {
 // Retourne un lien JWT que le client ouvre pour ajouter sa carte
 async function generateAddToWalletLink(card, holder) {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-  const classId     = `${ISSUER_ID}.${CLASS_SUFFIX}_${card.id}`;
-  const objectId    = `${ISSUER_ID}.${holder.serial_number}`;
+  const safeCardId  = card.id.replace(/-/g, '_');
+  const classId     = `${ISSUER_ID}.${CLASS_SUFFIX}_${safeCardId}`;
+  const safeSerial  = holder.serial_number.replace(/-/g, '_');
+  const objectId    = `${ISSUER_ID}.${safeSerial}`;
 
   const progressLabel = card.loyalty_type === 'stamp'
     ? `${holder.stamps} / ${card.stamp_total} tampons`
@@ -194,7 +203,8 @@ async function updateWalletObject(card, holder) {
   try {
     const auth     = getAuth();
     const client   = await auth.getClient();
-    const objectId = `${ISSUER_ID}.${holder.serial_number}`;
+    const safeSerial = holder.serial_number.replace(/-/g, '_');
+    const objectId = `${ISSUER_ID}.${safeSerial}`;
 
     const progressLabel = card.loyalty_type === 'stamp'
       ? `${holder.stamps} / ${card.stamp_total} tampons`
@@ -223,7 +233,8 @@ async function sendCampaignMessage(holder, messageText) {
   try {
     const auth     = getAuth();
     const client   = await auth.getClient();
-    const objectId = `${ISSUER_ID}.${holder.serial_number}`;
+    const safeSerial = holder.serial_number.replace(/-/g, '_');
+    const objectId = `${ISSUER_ID}.${safeSerial}`;
 
     // Ajouter un message à l'objet Wallet existant
     await client.request({
