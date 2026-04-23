@@ -129,7 +129,9 @@ router.post('/', authMiddleware, async (req, res, next) => {
 
     // ── 5. Mettre à jour Google Wallet ────────────────────
     if (process.env.GOOGLE_ISSUER_ID && process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-      updateWalletObject(holder, { ...holder, points: finalPoints ?? 0, stamps: finalStamps ?? 0 }).catch(console.error);
+      const updatedPoints = responsePayload.client?.points_after ?? holder.points;
+      const updatedStamps = responsePayload.client?.stamps_after ?? holder.stamps;
+      updateWalletObject(holder, { ...holder, points: updatedPoints, stamps: updatedStamps }).catch(console.error);
     }
 
     res.json({ success: true, ...responsePayload });
