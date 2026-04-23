@@ -10,10 +10,7 @@ function getAuth() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
   return new GoogleAuth({
     credentials,
-    scopes: [
-      'https://www.googleapis.com/auth/wallet_object.issuer',
-      'https://www.googleapis.com/auth/cloud-platform',
-    ],
+    scopes: ['https://www.googleapis.com/auth/wallet_object.issuer'],
   });
 }
 
@@ -30,7 +27,7 @@ async function createOrUpdateClass(card) {
     issuerName: card.card_name,
     programName: card.card_name,
     programLogo: {
-      sourceUri: { uri: 'https://storage.googleapis.com/wallet-lab-tools-codelab-artifacts-public/pass_google_logo.jpg' },
+      sourceUri: { uri: 'https://loyalwallet.hentati.me/logo.png' },
       contentDescription: { defaultValue: { language: 'fr', value: card.card_name } },
     },
     rewardsTier: card.loyalty_type === 'stamp' ? 'GOLD' : 'SILVER',
