@@ -137,13 +137,20 @@ router.post('/', authMiddleware, async (req, res, next) => {
 
     // ── 6. SMS notification scan (optionnel) ──────────────
     if (holder.phone && process.env.TWILIO_ACCOUNT_SID) {
+      const current = holder.loyalty_type === 'stamp'
+        ? (responsePayload.client?.stamps_after ?? holder.stamps)
+        : (responsePayload.client?.points_after ?? holder.points);
+      const total = holder.loyalty_type === 'stamp'
+        ? holder.stamp_total
+        : holder.points_for_reward;
+
       sendScanNotification({
         phone:             holder.phone,
         name:              holder.name,
-        cardName:          card.card_name,
-        current:           responsePayload.client?.stamps_after ?? responsePayload.client?.points_after ?? 0,
-        total:             card.loyalty_type === 'stamp' ? card.stamp_total : card.points_for_reward,
-        rewardDescription: card.reward_description,
+        cardName:          holder.card_name,
+        current,
+        total,
+        rewardDescription: holder.reward_description,
       }).catch(console.error);
     }
 
