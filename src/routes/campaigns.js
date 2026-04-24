@@ -4,6 +4,7 @@ const { pool } = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 const { sendCampaignMessage } = require('../services/googleWalletService');
 const { pushPassUpdate } = require('../services/apnService');
+const { sendCardLink } = require('../services/smsService');
 
 // ── POST /api/campaigns/send ───────────────────────────────
 // Le restaurateur envoie un message à un segment de clients
@@ -77,6 +78,7 @@ router.post('/send', authMiddleware, async (req, res, next) => {
     // ── Envoyer à chaque client ────────────────────────────
     let sent = 0;
     let errors = 0;
+    let smsSent = 0;
 
     const sendPromises = holders.rows.map(async (holder) => {
       try {
@@ -85,9 +87,29 @@ router.post('/send', authMiddleware, async (req, res, next) => {
           await sendCampaignMessage(holder, message);
         }
 
-        // 2. Apple Wallet — push silencieux (le pass se met à jour)
+        // 2. Apple Wallet — push silencieux
         if (holder.apn_push_token) {
           await pushPassUpdate(holder.apn_push_token);
+        }
+
+        // 3. SMS Twilio si numéro disponible
+        if (holder.phone && process.env.TWILIO_ACCOUNT_SID) {
+          try {
+            const twilio = require('twilio')(
+              process.env.TWILIO_ACCOUNT_SID,
+              process.env.TWILIO_AUTH_TOKEN
+            );
+            const cardUrl = `${process.env.BASE_URL_FRONTEND}/card/${holder.serial_number}`;
+            const smsBody = `${holder.card_name} : ${message}\n\nVotre carte : ${cardUrl}`;
+            await twilio.messages.create({
+              from: process.env.TWILIO_PHONE_NUMBER,
+              to:   holder.phone,
+              body: smsBody,
+            });
+            smsSent++;
+          } catch (smsErr) {
+            console.error(`SMS campaign error for ${holder.phone}:`, smsErr.message);
+          }
         }
 
         sent++;
@@ -107,8 +129,9 @@ router.post('/send', authMiddleware, async (req, res, next) => {
       success: true,
       sent,
       errors,
+      sms_sent: smsSent,
       total: holders.rows.length,
-      message: `Message envoyé à ${sent} client${sent > 1 ? 's' : ''}`,
+      message: `Message envoyé à ${sent} client${sent > 1 ? 's' : ''} (dont ${smsSent} par SMS)`,
     });
 
   } catch (err) {
