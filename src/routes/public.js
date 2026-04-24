@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const QRCode = require('qrcode');
 const { pool } = require('../db/pool');
 const { generateAddToWalletLink, createOrUpdateClass } = require('../services/googleWalletService');
+const { sendCardLink } = require('../services/smsService');
 
 // ── GET /api/public/card/:restaurantId/:cardId
 // Retourne les infos publiques d'une carte (pour afficher le QR d'inscription)
@@ -116,8 +117,25 @@ router.post('/register/:restaurantId/:cardId', async (req, res, next) => {
     // Lien Apple Wallet
     const appleWalletUrl = `${process.env.BASE_URL}/api/passes/${serialNumber}`;
 
+    // ── Envoyer SMS si numéro disponible ─────────────────
+    let smsSent = false;
+    if (phone && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+      try {
+        await sendCardLink({
+          phone,
+          name,
+          cardName: card.card_name,
+          serialNumber,
+        });
+        smsSent = true;
+      } catch (smsErr) {
+        console.error('SMS error (non-blocking):', smsErr.message);
+      }
+    }
+
     res.status(201).json({
       success: true,
+      sms_sent: smsSent,
       holder: {
         serial_number: serialNumber,
         name: holder.name,

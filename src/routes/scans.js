@@ -4,6 +4,7 @@ const { pool } = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 const { pushPassUpdate } = require('../services/apnService');
 const { updateWalletObject } = require('../services/googleWalletService');
+const { sendScanNotification } = require('../services/smsService');
 
 // ══════════════════════════════════════════════════════════
 //  POST /api/scans
@@ -132,6 +133,18 @@ router.post('/', authMiddleware, async (req, res, next) => {
       const updatedPoints = responsePayload.client?.points_after ?? holder.points;
       const updatedStamps = responsePayload.client?.stamps_after ?? holder.stamps;
       updateWalletObject(holder, { ...holder, points: updatedPoints, stamps: updatedStamps }).catch(console.error);
+    }
+
+    // ── 6. SMS notification scan (optionnel) ──────────────
+    if (holder.phone && process.env.TWILIO_ACCOUNT_SID) {
+      sendScanNotification({
+        phone:             holder.phone,
+        name:              holder.name,
+        cardName:          card.card_name,
+        current:           responsePayload.client?.stamps_after ?? responsePayload.client?.points_after ?? 0,
+        total:             card.loyalty_type === 'stamp' ? card.stamp_total : card.points_for_reward,
+        rewardDescription: card.reward_description,
+      }).catch(console.error);
     }
 
     res.json({ success: true, ...responsePayload });

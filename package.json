@@ -19,7 +19,8 @@
     "qrcode": "^1.5.3",
     "apn": "^2.2.0",
     "uuid": "^9.0.0",
-    "google-auth-library": "^9.0.0"
+    "google-auth-library": "^9.0.0",
+    "twilio": "^5.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
