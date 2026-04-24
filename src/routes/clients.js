@@ -51,3 +51,90 @@ router.get('/stats', authMiddleware, async (req, res, next) => {
 });
 
 module.exports = router;
+
+// ── GET /api/clients/:id ──────────────────────────────────
+router.get('/:id', authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const restaurantId = req.restaurant.id;
+
+    const result = await pool.query(
+      `SELECT ch.*, lc.card_name, lc.loyalty_type, lc.stamp_total,
+              lc.points_for_reward, lc.reward_description,
+              lc.background_color, lc.foreground_color, lc.label_color
+       FROM card_holders ch
+       JOIN loyalty_cards lc ON ch.card_id = lc.id
+       WHERE ch.id = $1 AND ch.restaurant_id = $2`,
+      [id, restaurantId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Client introuvable' });
+    }
+
+    const holder = result.rows[0];
+
+    // Derniers scans
+    const scans = await pool.query(
+      `SELECT * FROM scans WHERE card_holder_id = $1
+       ORDER BY created_at DESC LIMIT 10`,
+      [id]
+    );
+
+    res.json({
+      holder: {
+        id: holder.id,
+        name: holder.name,
+        phone: holder.phone,
+        email: holder.email,
+        serial_number: holder.serial_number,
+        points: holder.points,
+        stamps: holder.stamps,
+        total_visits: holder.total_visits,
+        total_rewards: holder.total_rewards,
+        created_at: holder.created_at,
+      },
+      card: {
+        name: holder.card_name,
+        loyalty_type: holder.loyalty_type,
+        stamp_total: holder.stamp_total,
+        points_for_reward: holder.points_for_reward,
+        reward_description: holder.reward_description,
+        background_color: holder.background_color,
+        foreground_color: holder.foreground_color,
+        label_color: holder.label_color,
+      },
+      scans: scans.rows,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── PATCH /api/clients/:id ────────────────────────────────
+// Mettre à jour le numéro de téléphone
+router.patch('/:id', authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { phone, name, email } = req.body;
+    const restaurantId = req.restaurant.id;
+
+    const result = await pool.query(
+      `UPDATE card_holders
+       SET phone = COALESCE($1, phone),
+           name  = COALESCE($2, name),
+           email = COALESCE($3, email)
+       WHERE id = $4 AND restaurant_id = $5
+       RETURNING *`,
+      [phone || null, name || null, email || null, id, restaurantId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Client introuvable' });
+    }
+
+    res.json({ success: true, holder: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
