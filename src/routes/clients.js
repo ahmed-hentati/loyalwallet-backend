@@ -138,3 +138,41 @@ router.patch('/:id', authMiddleware, async (req, res, next) => {
     next(err);
   }
 });
+
+// ── POST /api/clients/:id/send-link ──────────────────────
+// Envoyer le lien de la carte par SMS via Twilio
+router.post('/:id/send-link', authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const restaurantId = req.restaurant.id;
+
+    const result = await pool.query(
+      `SELECT ch.*, lc.card_name FROM card_holders ch
+       JOIN loyalty_cards lc ON ch.card_id = lc.id
+       WHERE ch.id = $1 AND ch.restaurant_id = $2`,
+      [id, restaurantId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Client introuvable' });
+    }
+
+    const holder = result.rows[0];
+
+    if (!holder.phone) {
+      return res.status(400).json({ error: 'Ce client n\'a pas de numéro de téléphone' });
+    }
+
+    const { sendCardLink } = require('../services/smsService');
+    await sendCardLink({
+      phone: holder.phone,
+      name: holder.name,
+      cardName: holder.card_name,
+      serialNumber: holder.serial_number,
+    });
+
+    res.json({ success: true, message: `SMS envoyé à ${holder.phone}` });
+  } catch (err) {
+    next(err);
+  }
+});
