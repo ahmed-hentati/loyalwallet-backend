@@ -17,7 +17,8 @@ async function sendCardLink({ phone, name, cardName, serialNumber }) {
   const cardUrl = `${process.env.BASE_URL_FRONTEND}/card/${serialNumber}`;
   const prenom  = name ? ` ${name}` : '';
 
-  const message = `Bonjour${prenom} ! 🎉\nVotre carte fidélité "${cardName}" est prête.\n\nAjoutez-la à votre Wallet :\n${cardUrl}\n\nGardez ce lien pour suivre vos points !`;
+  //  const message = `Bonjour${prenom} ! 🎉\nVotre carte fidélité "${cardName}" est prête.\n\nAjoutez-la à votre Wallet :\n${cardUrl}\n\nGardez ce lien pour suivre vos points !`;
+  const message = `Bonjour${prenom} ! Votre carte "${cardName}" est prête : ${cardUrl}`;
 
   try {
     const result = await client.messages.create({
@@ -41,10 +42,12 @@ async function sendScanNotification({ phone, name, cardName, current, total, rew
   let message;
 
   if (current >= total) {
-    message = `🎉 Félicitations${prenom} ! Vous avez atteint ${total}/${total} — votre récompense "${rewardDescription}" est disponible chez ${cardName} !`;
+    //message = `🎉 Félicitations${prenom} ! Vous avez atteint ${total}/${total} — votre récompense "${rewardDescription}" est disponible chez ${cardName} !`;
+    message = `Felicitations${prenom} ! Recompense "${rewardDescription}" disponible chez ${cardName} !`;
   } else {
     const remaining = total - current;
-    message = `✅ Tampon crédité${prenom} ! Vous avez ${current}/${total} chez ${cardName}. Plus que ${remaining} pour votre récompense "${rewardDescription}" !`;
+    //message = `✅ Tampon crédité${prenom} ! Vous avez ${current}/${total} chez ${cardName}. Plus que ${remaining} pour votre récompense "${rewardDescription}" !`;
+    message = `Tampon credite${prenom} ! ${current}/${total} chez ${cardName}. Encore ${remaining} pour votre recompense !`;
   }
 
   try {
