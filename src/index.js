@@ -11,6 +11,8 @@ const scanRoutes = require('./routes/scans');
 const passRoutes = require('./routes/passes');
 const campaignRoutes = require('./routes/campaigns');
 const publicRoutes = require('./routes/public');
+const { startAutomations } = require('./services/automationService');
+const { startBackupCron }  = require('./services/backupService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -51,6 +53,8 @@ async function start() {
   await testConnection();
   app.listen(PORT, () => {
     console.log(`🚀 LoyalWallet backend running on port ${PORT}`);
+    startAutomations();
+    startBackupCron();
   });
 }
 
