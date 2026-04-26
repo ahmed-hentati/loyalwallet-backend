@@ -26,12 +26,19 @@ router.post('/register', async (req, res, next) => {
     // Hasher le mot de passe
     const password_hash = await bcrypt.hash(password, 12);
 
+    // Générer le slug
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .substring(0, 60);
+
     // Créer le restaurant
     const result = await pool.query(
-      `INSERT INTO restaurants (name, email, password_hash, phone)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, name, email, plan, created_at`,
-      [name, email, password_hash, phone || null]
+      `INSERT INTO restaurants (name, email, password_hash, phone, slug)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, email, plan, slug, created_at`,
+      [name, email, password_hash, phone || null, slug]
     );
 
     const restaurant = result.rows[0];
@@ -96,7 +103,7 @@ const { authMiddleware } = require('../middleware/auth');
 router.get('/me', authMiddleware, async (req, res, next) => {
   try {
     const result = await pool.query(
-      'SELECT id, name, email, phone, logo_url, plan, created_at FROM restaurants WHERE id = $1',
+      'SELECT id, name, email, phone, logo_url, plan, slug, created_at FROM restaurants WHERE id = $1',
       [req.restaurant.id]
     );
     res.json(result.rows[0]);

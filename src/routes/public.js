@@ -232,3 +232,45 @@ router.get('/holder/:serialNumber', async (req, res, next) => {
 });
 
 module.exports = router;
+
+// ── GET /api/public/restaurant/:slug ─────────────────────
+// Page publique d'un restaurant
+router.get('/restaurant/:slug', async (req, res, next) => {
+  try {
+    const { slug } = req.params;
+
+    const result = await pool.query(
+      `SELECT r.id, r.name, r.logo_url, r.plan,
+              json_agg(
+                json_build_object(
+                  'id', lc.id,
+                  'card_name', lc.card_name,
+                  'loyalty_type', lc.loyalty_type,
+                  'stamp_total', lc.stamp_total,
+                  'points_for_reward', lc.points_for_reward,
+                  'reward_description', lc.reward_description,
+                  'background_color', lc.background_color,
+                  'foreground_color', lc.foreground_color,
+                  'label_color', lc.label_color,
+                  'background_gradient', lc.background_gradient,
+                  'card_pattern', lc.card_pattern,
+                  'logo_emoji', lc.logo_emoji,
+                  'logo_url', lc.logo_url
+                ) ORDER BY lc.created_at ASC
+              ) FILTER (WHERE lc.id IS NOT NULL AND lc.is_active = TRUE) as cards
+       FROM restaurants r
+       LEFT JOIN loyalty_cards lc ON lc.restaurant_id = r.id
+       WHERE r.slug = $1
+       GROUP BY r.id`,
+      [slug]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Restaurant introuvable' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
