@@ -176,3 +176,149 @@ router.post('/:id/send-link', authMiddleware, async (req, res, next) => {
     next(err);
   }
 });
+
+// ── GET /api/clients/analytics ────────────────────────────
+// Stats de rétention pour le dashboard
+router.get('/analytics/retention', authMiddleware, async (req, res, next) => {
+  try {
+    const restaurantId = req.restaurant.id;
+
+    const [
+      totalClients,
+      activeThisMonth,
+      activeLastMonth,
+      newThisMonth,
+      newLastMonth,
+      returningClients,
+      avgVisitsPerClient,
+      topClients,
+      visitsByDay,
+      rewardsGiven,
+    ] = await Promise.all([
+
+      // Total clients
+      pool.query(
+        'SELECT COUNT(*) FROM card_holders WHERE restaurant_id = $1',
+        [restaurantId]
+      ),
+
+      // Actifs ce mois (ont scanné dans les 30 derniers jours)
+      pool.query(
+        `SELECT COUNT(DISTINCT card_holder_id) FROM scans
+         WHERE restaurant_id = $1 AND created_at > NOW() - INTERVAL '30 days'`,
+        [restaurantId]
+      ),
+
+      // Actifs le mois dernier
+      pool.query(
+        `SELECT COUNT(DISTINCT card_holder_id) FROM scans
+         WHERE restaurant_id = $1
+         AND created_at BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days'`,
+        [restaurantId]
+      ),
+
+      // Nouveaux clients ce mois
+      pool.query(
+        `SELECT COUNT(*) FROM card_holders
+         WHERE restaurant_id = $1 AND created_at > NOW() - INTERVAL '30 days'`,
+        [restaurantId]
+      ),
+
+      // Nouveaux clients le mois dernier
+      pool.query(
+        `SELECT COUNT(*) FROM card_holders
+         WHERE restaurant_id = $1
+         AND created_at BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days'`,
+        [restaurantId]
+      ),
+
+      // Clients qui sont revenus (+ de 1 visite)
+      pool.query(
+        `SELECT COUNT(*) FROM card_holders
+         WHERE restaurant_id = $1 AND total_visits > 1`,
+        [restaurantId]
+      ),
+
+      // Moyenne de visites par client
+      pool.query(
+        `SELECT ROUND(AVG(total_visits)::numeric, 1) as avg
+         FROM card_holders WHERE restaurant_id = $1 AND total_visits > 0`,
+        [restaurantId]
+      ),
+
+      // Top 5 clients les plus fidèles
+      pool.query(
+        `SELECT ch.name, ch.serial_number, ch.total_visits, ch.total_rewards,
+                lc.card_name, ch.stamps, ch.points,
+                lc.loyalty_type, lc.stamp_total, lc.points_for_reward
+         FROM card_holders ch
+         JOIN loyalty_cards lc ON ch.card_id = lc.id
+         WHERE ch.restaurant_id = $1
+         ORDER BY ch.total_visits DESC LIMIT 5`,
+        [restaurantId]
+      ),
+
+      // Visites par jour sur les 30 derniers jours
+      pool.query(
+        `SELECT DATE(created_at) as day, COUNT(*) as visits
+         FROM scans WHERE restaurant_id = $1
+         AND created_at > NOW() - INTERVAL '30 days'
+         GROUP BY DATE(created_at)
+         ORDER BY day ASC`,
+        [restaurantId]
+      ),
+
+      // Récompenses accordées ce mois
+      pool.query(
+        `SELECT COUNT(*) FROM scans
+         WHERE restaurant_id = $1
+         AND reward_triggered = TRUE
+         AND created_at > NOW() - INTERVAL '30 days'`,
+        [restaurantId]
+      ),
+    ]);
+
+    const total   = parseInt(totalClients.rows[0].count);
+    const active  = parseInt(activeThisMonth.rows[0].count);
+    const returning = parseInt(returningClients.rows[0].count);
+
+    // Taux de rétention = clients actifs / total
+    const retentionRate = total > 0 ? Math.round((active / total) * 100) : 0;
+
+    // Taux de retour = clients avec + d'1 visite / total
+    const returnRate = total > 0 ? Math.round((returning / total) * 100) : 0;
+
+    // Évolution clients ce mois vs mois dernier
+    const newCurrent  = parseInt(newThisMonth.rows[0].count);
+    const newPrevious = parseInt(newLastMonth.rows[0].count);
+    const newGrowth   = newPrevious > 0
+      ? Math.round(((newCurrent - newPrevious) / newPrevious) * 100)
+      : 0;
+
+    // Évolution actifs ce mois vs mois dernier
+    const activeCurrent  = parseInt(activeThisMonth.rows[0].count);
+    const activePrevious = parseInt(activeLastMonth.rows[0].count);
+    const activeGrowth   = activePrevious > 0
+      ? Math.round(((activeCurrent - activePrevious) / activePrevious) * 100)
+      : 0;
+
+    res.json({
+      overview: {
+        total_clients:   total,
+        active_30d:      activeCurrent,
+        active_growth:   activeGrowth,
+        new_this_month:  newCurrent,
+        new_growth:      newGrowth,
+        retention_rate:  retentionRate,
+        return_rate:     returnRate,
+        avg_visits:      parseFloat(avgVisitsPerClient.rows[0]?.avg ?? 0),
+        rewards_this_month: parseInt(rewardsGiven.rows[0].count),
+      },
+      top_clients: topClients.rows,
+      visits_by_day: visitsByDay.rows,
+    });
+
+  } catch (err) {
+    next(err);
+  }
+});
