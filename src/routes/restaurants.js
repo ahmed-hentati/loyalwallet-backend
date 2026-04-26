@@ -7,7 +7,7 @@ const { authMiddleware } = require('../middleware/auth');
 router.get('/me', authMiddleware, async (req, res, next) => {
   try {
     const result = await pool.query(
-      'SELECT id, name, email, phone, logo_url, plan, created_at FROM restaurants WHERE id = $1',
+      'SELECT id, name, email, phone, logo_url, plan, slug, created_at FROM restaurants WHERE id = $1',
       [req.restaurant.id]
     );
     res.json(result.rows[0]);
@@ -17,10 +17,21 @@ router.get('/me', authMiddleware, async (req, res, next) => {
 // PUT /api/restaurants/me
 router.put('/me', authMiddleware, async (req, res, next) => {
   try {
-    const { name, phone, address } = req.body;
+    const { name, phone } = req.body;
+
+    // Regénérer le slug si le nom change
+    const slug = name
+      ? name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').substring(0, 60)
+      : null;
+
     const result = await pool.query(
-      'UPDATE restaurants SET name=$1, phone=$2, address=$3 WHERE id=$4 RETURNING id, name, email, phone, plan',
-      [name, phone, address, req.restaurant.id]
+      `UPDATE restaurants
+       SET name  = COALESCE($1, name),
+           phone = COALESCE($2, phone),
+           slug  = COALESCE($3, slug)
+       WHERE id = $4
+       RETURNING id, name, email, phone, logo_url, plan, slug`,
+      [name || null, phone || null, slug, req.restaurant.id]
     );
     res.json(result.rows[0]);
   } catch (err) { next(err); }
