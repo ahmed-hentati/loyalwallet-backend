@@ -17,21 +17,24 @@ router.get('/me', authMiddleware, async (req, res, next) => {
 // PUT /api/restaurants/me
 router.put('/me', authMiddleware, async (req, res, next) => {
   try {
-    const { name, phone } = req.body;
+    const { name, phone, address, city, postal_code, website } = req.body;
 
-    // Regénérer le slug si le nom change
     const slug = name
       ? name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').substring(0, 60)
       : null;
 
     const result = await pool.query(
       `UPDATE restaurants
-       SET name  = COALESCE($1, name),
-           phone = COALESCE($2, phone),
-           slug  = COALESCE($3, slug)
-       WHERE id = $4
-       RETURNING id, name, email, phone, logo_url, plan, slug`,
-      [name || null, phone || null, slug, req.restaurant.id]
+       SET name        = COALESCE($1, name),
+           phone       = COALESCE($2, phone),
+           slug        = COALESCE($3, slug),
+           address     = COALESCE($4, address),
+           city        = COALESCE($5, city),
+           postal_code = COALESCE($6, postal_code),
+           website     = COALESCE($7, website)
+       WHERE id = $8
+       RETURNING id, name, email, phone, logo_url, plan, slug, address, city, postal_code, website`,
+      [name || null, phone || null, slug, address || null, city || null, postal_code || null, website || null, req.restaurant.id]
     );
     res.json(result.rows[0]);
   } catch (err) { next(err); }
