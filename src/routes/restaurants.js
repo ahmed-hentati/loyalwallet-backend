@@ -7,7 +7,11 @@ const { authMiddleware } = require('../middleware/auth');
 router.get('/me', authMiddleware, async (req, res, next) => {
   try {
     const result = await pool.query(
-      'SELECT id, name, email, phone, logo_url, plan, slug, created_at FROM restaurants WHERE id = $1',
+      `SELECT id, name, email, phone, logo_url, plan, slug,
+              address, city, postal_code, website,
+              google_review_url, google_review_enabled, google_review_after_visits,
+              created_at
+       FROM restaurants WHERE id = $1`,
       [req.restaurant.id]
     );
     res.json(result.rows[0]);
@@ -17,7 +21,8 @@ router.get('/me', authMiddleware, async (req, res, next) => {
 // PUT /api/restaurants/me
 router.put('/me', authMiddleware, async (req, res, next) => {
   try {
-    const { name, phone, address, city, postal_code, website } = req.body;
+    const { name, phone, address, city, postal_code, website,
+            google_review_url, google_review_enabled, google_review_after_visits } = req.body;
 
     const slug = name
       ? name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').substring(0, 60)
@@ -25,16 +30,26 @@ router.put('/me', authMiddleware, async (req, res, next) => {
 
     const result = await pool.query(
       `UPDATE restaurants
-       SET name        = COALESCE($1, name),
-           phone       = COALESCE($2, phone),
-           slug        = COALESCE($3, slug),
-           address     = COALESCE($4, address),
-           city        = COALESCE($5, city),
-           postal_code = COALESCE($6, postal_code),
-           website     = COALESCE($7, website)
-       WHERE id = $8
-       RETURNING id, name, email, phone, logo_url, plan, slug, address, city, postal_code, website`,
-      [name || null, phone || null, slug, address || null, city || null, postal_code || null, website || null, req.restaurant.id]
+       SET name                      = COALESCE($1, name),
+           phone                     = COALESCE($2, phone),
+           slug                      = COALESCE($3, slug),
+           address                   = COALESCE($4, address),
+           city                      = COALESCE($5, city),
+           postal_code               = COALESCE($6, postal_code),
+           website                   = COALESCE($7, website),
+           google_review_url         = COALESCE($8, google_review_url),
+           google_review_enabled     = COALESCE($9, google_review_enabled),
+           google_review_after_visits= COALESCE($10, google_review_after_visits)
+       WHERE id = $11
+       RETURNING id, name, email, phone, logo_url, plan, slug,
+                 address, city, postal_code, website,
+                 google_review_url, google_review_enabled, google_review_after_visits`,
+      [name || null, phone || null, slug,
+       address ?? null, city ?? null, postal_code ?? null, website ?? null,
+       google_review_url ?? null,
+       google_review_enabled ?? null,
+       google_review_after_visits ?? null,
+       req.restaurant.id]
     );
     res.json(result.rows[0]);
   } catch (err) { next(err); }
@@ -87,4 +102,16 @@ router.post('/automations/test', authMiddleware, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// ── DELETE /api/restaurants/me ────────────────────────────
+router.delete('/me', authMiddleware, async (req, res, next) => {
+  try {
+    const restaurantId = req.restaurant.id;
+
+    // Supprimer en cascade (scans, card_holders, loyalty_cards, automation_logs)
+    await pool.query('DELETE FROM restaurants WHERE id = $1', [restaurantId]);
+
+    res.json({ success: true, message: 'Compte supprimé définitivement' });
+  } catch (err) { next(err); }
 });
