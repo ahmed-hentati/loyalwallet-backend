@@ -1,16 +1,28 @@
 const { Pool } = require('pg');
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || null,
-  ssl: process.env.NODE_ENV === 'production'
-    ? { rejectUnauthorized: false }
-    : false,
-  host:     process.env.DB_HOST     || 'localhost',
-  port:     process.env.DB_PORT     || 5432,
-  database: process.env.DB_NAME     || 'loyalwallet',
-  user:     process.env.DB_USER     || 'postgres',
-  password: process.env.DB_PASSWORD || '',
-});
+let pool;
+
+if (process.env.DATABASE_URL) {
+  // Parser l'URL manuellement pour éviter le conflit SSL de pg-connection-string
+  const url = new URL(process.env.DATABASE_URL);
+
+  pool = new Pool({
+    host:     url.hostname,
+    port:     parseInt(url.port) || 5432,
+    database: url.pathname.replace('/', ''),
+    user:     url.username,
+    password: url.password,
+    ssl:      { rejectUnauthorized: false },
+  });
+} else {
+  pool = new Pool({
+    host:     process.env.DB_HOST     || 'localhost',
+    port:     process.env.DB_PORT     || 5432,
+    database: process.env.DB_NAME     || 'loyalwallet',
+    user:     process.env.DB_USER     || 'postgres',
+    password: process.env.DB_PASSWORD || '',
+  });
+}
 
 async function testConnection() {
   try {
